@@ -60,7 +60,6 @@ class SerialPortController {
 
     fun stopConnection() {
         if (fd >= 0) {
-          //  WpiControl.serialFlush(fd)
             WpiControl.serialClose(fd)
         }
         fd = -1
