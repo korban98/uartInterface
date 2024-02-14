@@ -1,0 +1,78 @@
+diff --git a/gpio/readall.c b/gpio/readall.c
+index c73f57b..9f7fd1e 100644
+--- a/gpio/readall.c
++++ b/gpio/readall.c
+@@ -42,6 +42,15 @@ extern int wpMode ;
+ #  define       FALSE   (1==2)
+ #endif
+ 
++#if defined(__ANDROID__)
++#include <android/log.h>
++#include <sys/system_properties.h>
++#define LOG_TAG "wiringPi"
++#define LOGI(fmt, args...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, fmt, ##args)
++#define LOGD(fmt, args...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, fmt, ##args)
++#define LOGE(fmt, args...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, fmt, ##args)
++#endif
++
+ /*
+  * doReadallExternal:
+  *	A relatively crude way to read the pins on an external device.
+@@ -1503,8 +1512,14 @@ int get_gpio_info (g_info * gpio_info) {
+ 			gpio_info->pin_max = 26;
+ 			gpio_info->physNames = physNames_5B;
+ 			break;
++		case PI_MODEL_CM4:
++			gpio_info->physToWpi = physToWpi_CM4;
++			gpio_info->pin_max = 40;
++			gpio_info->physNames = physNames_CM4;
++			LOGD("csy PI_MODEL_CM4");
++			break;
+ 		default:
+-			printf("Oops - unable to determine board type... model: %d\n", OrangePiModel);
++			LOGD("Oops - unable to determine board type... model: %d\n", OrangePiModel);
+ 			return -1;
+ 	}
+ 
+diff --git a/wiringPi/wiringPi.c b/wiringPi/wiringPi.c
+index 429057b..3b17663 100755
+--- a/wiringPi/wiringPi.c
++++ b/wiringPi/wiringPi.c
+@@ -284,7 +284,7 @@ static int ORANGEPI_PIN_MASK_5B[5][32] =  //[BANK]	[INDEX]
+ 
+ static int ORANGEPI_PIN_MASK_CM4[5][32] =  //[BANK]	[INDEX]
+ {
+-	{-1,-1,-1,-1,-1,-1,-1,-1, -1,-1,-1,-1,-1,-1,-1,-1, -1,-1,-1,-1,-1,-1,-1,-1, -1,-1,-1,-1,-1,-1,-1,-1,},//GPIO0
++	{-1,-1,-1,-1,-1,-1,-1,-1, -1,-1,-1,-1,-1,-1,-1,-1, -1,-1,-1,-1,-1,-1,-1,-1,  0, 1,-1,-1,-1,-1,-1,-1,},//GPIO0
+ 	{ 0, 1,-1,-1,-1,-1,-1,-1, -1,-1,-1,-1,-1,-1,-1,-1, -1,-1,-1,-1,-1,-1,-1,-1, -1,-1,-1,-1,-1,-1,-1,-1,},//GPIO1
+ 	{-1,-1,-1,-1,-1,-1,-1,-1, -1,-1,-1,-1,-1,-1,-1,-1, -1,-1,-1,-1,-1,-1,-1,-1, -1,-1,-1,-1,-1,-1,-1,-1,},//GPIO2
+ 	{-1,-1,-1,-1,-1,-1,-1,-1, -1,-1,-1,-1,-1,-1,-1,-1, -1,-1,-1,-1,-1,-1, 6, 7,  0, 1, 2, 3, 4, 5, 6, 7,},//GPIO3
+@@ -1771,7 +1771,11 @@ void piBoardId (int * model)
+ 	else if (strncmp(revision, "orangepi-r1plus-lts.",     20) == 0) { *model = PI_MODEL_R1_PLUS; }
+ 	else if (strncmp(revision, "orangepi5.",     		   10) == 0) { *model = PI_MODEL_5; }
+ 	else if (strncmp(revision, "orangepi5b.",     		   11) == 0) { *model = PI_MODEL_5B; }
+-	else if (strncmp(revision, "orangepicm4.",     		   11) == 0) { *model = PI_MODEL_CM4; }
++	else if (strncmp(revision, "orangepicm4.",     		   12) == 0) { *model = PI_MODEL_CM4; }
++
++#if defined(__ANDROID__)
++	LOGD("piBoardId: model = %d", *model);
++#endif
+ 
+ 	if (wiringPiDebug)
+ 		printf("piBoardId: model = %d\n", *model);
+@@ -3830,6 +3834,7 @@ int OrangePi_set_gpio_mode(int pin, int mode)
+ 	unsigned int rk3588_bus_ioc_phyaddr;
+ 	unsigned int temp = 0;
+ 	unsigned int bit_enable;
++	unsigned int grf_val = 0;
+ 
+ 	switch (OrangePiModel)
+ 	{
+@@ -4104,7 +4109,6 @@ int OrangePi_set_gpio_mode(int pin, int mode)
+ 			break;
+ 
+ 		case PI_MODEL_CM4:
+-			unsigned int grf_val, bit_enable;
+ 			printf("debug bank = %d, index = %d\n", bank, index);
+ 			if(bank == 0){
+ 				cru_phyaddr = RK3566_PMU_CRU_BASE + RK3566_PMUCRU_PMUGATE_CON01_OFFSET;

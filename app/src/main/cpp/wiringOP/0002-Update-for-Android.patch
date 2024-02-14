@@ -1,0 +1,429 @@
+From b52c7d921a36fb0a9085502ca2562d46e0ae69a1 Mon Sep 17 00:00:00 2001
+From: baiywt <baiywt_gj@163.com>
+Date: Sun, 18 Dec 2022 08:30:48 +0000
+Subject: [PATCH 2/3] Update for Android
+
+---
+ gpio/readall.c           |  65 +++++++++++++++++++++++
+ wiringPi/softPwm.c       |   6 +++
+ wiringPi/wiringPi.c      |  20 ++++++++
+ wiringPi/wiringPi.h      |   8 +++
+ wiringPi/wiringPiSPI.c   |  33 +++++++++---
+ wiringPi/wpiExtensions.c | 131 ++++++++++++++++++++++++-----------------------
+ 6 files changed, 192 insertions(+), 71 deletions(-)
+ mode change 100644 => 100755 wiringPi/softPwm.c
+ mode change 100644 => 100755 wiringPi/wpiExtensions.c
+
+diff --git a/gpio/readall.c b/gpio/readall.c
+index b23d7f4..017cca6 100644
+--- a/gpio/readall.c
++++ b/gpio/readall.c
+@@ -1451,3 +1451,68 @@ void doQmode (int argc, char *argv [])
+   pin = atoi (argv [2]) ;
+   printf ("%s\n", alts [getAlt (pin)]) ;
+ }
++
++#if defined(__ANDROID__)
++int get_gpio_info (g_info * gpio_info) {
++
++	int OrangePiModel = -1;
++
++	piBoardId(&OrangePiModel);
++
++	switch (OrangePiModel) {
++		case PI_MODEL_3:
++			break;
++		case PI_MODEL_LTIE_2:
++			break;
++		case PI_MODEL_ZERO:
++			break;
++		case PI_MODEL_ZERO_PLUS_2:
++			break;
++		case PI_MODEL_WIN:
++			break;
++		case PI_MODEL_PRIME:
++			break;
++		case PI_MODEL_PC_2:
++			break;
++		case PI_MODEL_ZERO_PLUS:
++			break;
++		case PI_MODEL_ZERO_2:
++			gpio_info->physToWpi = physToWpi_ZERO_2;
++			gpio_info->pin_max = 34;
++			gpio_info->physNames = physNames_ZERO_2;
++			break;
++		case PI_MODEL_800:
++			break;
++		case PI_MODEL_4:
++			break;
++		case PI_MODEL_4_LTS:
++			break;
++		case PI_MODEL_RK3399:
++			break;
++		case PI_MODEL_R1_PLUS:
++			break;
++		case PI_MODEL_H3:
++			break;
++		case PI_MODEL_5:
++			gpio_info->physToWpi = physToWpi_5;
++			gpio_info->pin_max = 26;
++			gpio_info->physNames = physNames_5;
++			break;
++		case PI_MODEL_5B:
++			gpio_info->physToWpi = physToWpi_5B;
++			gpio_info->pin_max = 26;
++			gpio_info->physNames = physNames_5B;
++			break;
++		case PI_MODEL_CM4:
++			gpio_info->physToWpi = physToWpi_CM4;
++			gpio_info->pin_max = 40;
++			gpio_info->physNames = physNames_CM4;
++			break;
++		default:
++			printf("Oops - unable to determine board type... model: %d\n", OrangePiModel);
++			return -1;
++	}
++
++	return 0;
++}
++#endif
+diff --git a/wiringPi/softPwm.c b/wiringPi/softPwm.c
+old mode 100644
+new mode 100755
+index d99fa00..3c273e7
+--- a/wiringPi/softPwm.c
++++ b/wiringPi/softPwm.c
+@@ -36,6 +36,12 @@
+ 
+ #define	MAX_PINS	64
+ 
++#if defined(__ANDROID__)
++static inline int pthread_cancel(pthread_t thread) {
++  return pthread_kill(thread, SIGUSR1);
++}
++#endif
++
+ // The PWM Frequency is derived from the "pulse time" below. Essentially,
+ //	the frequency is a function of the range and this pulse time.
+ //	The total period will be range * pulse time in µS, so a pulse time
+diff --git a/wiringPi/wiringPi.c b/wiringPi/wiringPi.c
+index 948c1f5..dd13003 100755
+--- a/wiringPi/wiringPi.c
++++ b/wiringPi/wiringPi.c
+@@ -74,6 +74,15 @@
+ #include "softPwm.h"
+ #include "softTone.h"
+ 
++#if defined(__ANDROID__)
++#include <android/log.h>
++#include <sys/system_properties.h>
++#define LOG_TAG "wiringPi"
++#define LOGI(fmt, args...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, fmt, ##args)
++#define LOGD(fmt, args...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, fmt, ##args)
++#define LOGE(fmt, args...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, fmt, ##args)
++#endif
++
+ #include "wiringPi.h"
+ #include "../version.h"
+ 
+@@ -1678,6 +1687,12 @@ void piBoardId (int * model)
+ 	char revision[40];
+ 	unsigned int i = 0;
+ 
++#if defined(__ANDROID__)
++	char value[PROP_VALUE_MAX];
++    __system_property_get("ro.product.model", value);
++	sprintf(line, "BOARD=%s", value);
++	LOGD("piBoardId: %s", line);
++#else
+ 	if ((cpuFd = fopen ("/etc/orangepi-release", "r")) == NULL)
+ 		if ((cpuFd = fopen ("/etc/armbian-release", "r")) == NULL)
+ 			piGpioLayoutOops ("Unable to open /etc/orangepi-release or /etc/armbian-release.");
+@@ -1687,6 +1702,7 @@ void piBoardId (int * model)
+ 		break ;
+ 
+ 	fclose (cpuFd) ;
++#endif
+ 
+ 	if (strncmp (line, "BOARD=", 6) != 0)
+ 		piGpioLayoutOops ("No \"Revision\" line") ;
+@@ -1741,6 +1757,7 @@ void piBoardId (int * model)
+ 	else if (strncmp(revision, "orangepizeroplus2h5.",     20) == 0) { *model = PI_MODEL_ZERO_PLUS_2; }
+ 	else if (strncmp(revision, "orangepizeroplus2-h5.",    21) == 0) { *model = PI_MODEL_ZERO_PLUS_2; }
+ 	else if (strncmp(revision, "orangepizero2.",           14) == 0) { *model = PI_MODEL_ZERO_2; }
++	else if (strncmp(revision, "Orange Pi Zero 2.",        17) == 0) { *model = PI_MODEL_ZERO_2; }
+ 	else if (strncmp(revision, "orangepizero3.",           14) == 0) { *model = PI_MODEL_ZERO_2; }
+ 	else if (strncmp(revision, "orangepirk3399.",          15) == 0) { *model = PI_MODEL_RK3399; }
+ 	else if (strncmp(revision, "orangepi-rk3399.",         16) == 0) { *model = PI_MODEL_RK3399; }
+@@ -2996,6 +3013,9 @@ int wiringPiSetup (void)
+ 	//	Try /dev/mem. If that fails, then 
+ 	//	try /dev/gpiomem. If that fails then game over.
+ 	if ((fd = open ("/dev/mem", O_RDWR | O_SYNC | O_CLOEXEC)) < 0){
++#if defined(__ANDROID__)
++		LOGD("wiringPiSetup: open /dev/mem: %s", strerror(errno));
++#endif
+ 		if ((fd = open ("/dev/gpiomem", O_RDWR | O_SYNC | O_CLOEXEC) ) >= 0){	// We're using gpiomem
+ 			piGpioBase   = 0 ;
+ 			usingGpioMem = TRUE ;
+diff --git a/wiringPi/wiringPi.h b/wiringPi/wiringPi.h
+index 4a9daa7..7e7d255 100644
+--- a/wiringPi/wiringPi.h
++++ b/wiringPi/wiringPi.h
+@@ -514,6 +514,14 @@ extern void OrangePi_set_gpio_pullUpDnControl (int pin, int pud);
+ 
+ void set_soc_info(void);
+ 
++typedef struct {
++	int pin_max;
++	int * physToWpi;
++	char ** physNames;
++}g_info;
++
++extern int get_gpio_info(g_info *);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/wiringPi/wiringPiSPI.c b/wiringPi/wiringPiSPI.c
+index 01b3e55..abedded 100644
+--- a/wiringPi/wiringPiSPI.c
++++ b/wiringPi/wiringPiSPI.c
+@@ -36,6 +36,13 @@
+ 
+ #include "wiringPiSPI.h"
+ 
++#if defined(__ANDROID__)
++#include <android/log.h>
++#define LOG_TAG "wiringPi"
++#define LOGI(fmt, args...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, fmt, ##args)
++#define LOGD(fmt, args...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, fmt, ##args)
++#define LOGE(fmt, args...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, fmt, ##args)
++#endif
+ 
+ // The SPI bus parameters
+ //	Variables as they need to be passed as pointers later on
+@@ -43,8 +50,8 @@
+ static const uint8_t     spiBPW   = 8 ;
+ static const uint16_t    spiDelay = 0 ;
+ 
+-static uint32_t    spiSpeeds [2] ;
+-static int         spiFds [2] ;
++static uint32_t    spiSpeeds [5] ;
++static int         spiFds [5] ;
+ 
+ 
+ /*
+@@ -86,6 +93,10 @@ int wiringPiSPIDataRW (int channel, unsigned char *data, int len)
+   spi.speed_hz      = spiSpeeds [channel] ;
+   spi.bits_per_word = spiBPW ;
+ 
++#if defined(__ANDROID__)
++    LOGI("wiringPiSPIDataRW ==> speed: %d, fd: %d", spi.speed_hz, spiFds [channel]);
++#endif
++
+   return ioctl (spiFds [channel], SPI_IOC_MESSAGE(1), &spi) ;
+ }
+ 
+@@ -107,17 +118,27 @@ int wiringPiSPISetupMode (int channel, int port, int speed, int mode)
+   //mode    &= 3;
+   //channel &= 7;
+ 
+-  static char spidev[14];
++  static char spidev[15];
+ 
+   getDevice(spidev, channel, port);
+-  printf("Opening device %s\n", spidev); 
+-
+-  if ((fd = open (spidev, O_RDWR)) < 0)
++  printf("Opening device %s", spidev);
++#if defined(__ANDROID__)
++  LOGI("Opening device %s\n", spidev);
++#endif
++
++  if ((fd = open (spidev, O_RDWR)) < 0){
++#if defined(__ANDROID__)
++    LOGI("Unable to open SPI device: %s", strerror (errno));
++#endif
+     return wiringPiFailure (WPI_ALMOST, "Unable to open SPI device: %s\n", strerror (errno)) ;
++  }
+ 
+   spiSpeeds [channel] = speed ;
+   spiFds    [channel] = fd ;
+ 
++#if defined(__ANDROID__)
++    LOGI("speed: %d, fd: %d", speed, fd);
++#endif
+ // Set SPI parameters.
+ 
+   if (ioctl (fd, SPI_IOC_WR_MODE, &mode)            < 0)
+diff --git a/wiringPi/wpiExtensions.c b/wiringPi/wpiExtensions.c
+old mode 100644
+new mode 100755
+index bef126f..0588f44
+--- a/wiringPi/wpiExtensions.c
++++ b/wiringPi/wpiExtensions.c
+@@ -413,18 +413,18 @@ static int doExtensionPcf8574 (char *progName, int pinBase, char *params)
+ 
+ static int doExtensionAds1115 (char *progName, int pinBase, char *params)
+ {
+-  int i2c ;
++  //int i2c ;
+ 
+-  if ((params = extractInt (progName, params, &i2c)) == NULL)
+-    return FALSE ;
++  //if ((params = extractInt (progName, params, &i2c)) == NULL)
++  //  return FALSE ;
+ 
+-  if ((i2c < 0x03) || (i2c > 0x77))
+-  {
+-    verbError ("%s: i2c address (0x%X) out of range", progName, i2c) ;
+-    return FALSE ;
+-  }
++  //if ((i2c < 0x03) || (i2c > 0x77))
++  //{
++  //  verbError ("%s: i2c address (0x%X) out of range", progName, i2c) ;
++  //  return FALSE ;
++  //}
+ 
+-  ads1115Setup (pinBase, i2c) ;
++  //ads1115Setup (pinBase, i2c) ;
+ 
+   return TRUE ;
+ }
+@@ -465,8 +465,8 @@ static int doExtensionPcf8591 (char *progName, int pinBase, char *params)
+ 
+ static int doExtensionPseudoPins (UNU char *progName, int pinBase, UNU char *params)
+ {
+-  pseudoPinsSetup (pinBase) ;
+-
++//  pseudoPinsSetup (pinBase) ;
++//
+   return TRUE ;
+ }
+ 
+@@ -546,19 +546,19 @@ static int doExtensionRht03 (char *progName, int pinBase, char *params)
+ 
+ static int doExtensionMax31855 (char *progName, int pinBase, char *params)
+ {
+-  int spi ;
+-
+-  if ((params = extractInt (progName, params, &spi)) == NULL)
+-    return FALSE ;
+-
+-  if ((spi < 0) || (spi > 1))
+-  {
+-    verbError ("%s: SPI channel (%d) out of range", progName, spi) ;
+-    return FALSE ;
+-  }
+-
+-  max31855Setup (pinBase, spi) ;
+-
++//  int spi ;
++//
++//  if ((params = extractInt (progName, params, &spi)) == NULL)
++//    return FALSE ;
++//
++//  if ((spi < 0) || (spi > 1))
++//  {
++//    verbError ("%s: SPI channel (%d) out of range", progName, spi) ;
++//    return FALSE ;
++//  }
++//
++//  max31855Setup (pinBase, spi) ;
++//
+   return TRUE ;
+ }
+ 
+@@ -779,47 +779,48 @@ static int doExtensionDrcS (char *progName, int pinBase, char *params)
+ 
+ static int doExtensionDrcNet (char *progName, int pinBase, char *params)
+ {
+-  int pins ;
+-  char *ipAddress, *port, *password ;
+-  char pPort [1024] ;
+-
+-  if ((params = extractInt (progName, params, &pins)) == NULL)
+-    return FALSE ;
+-
+-  if ((pins < 1) || (pins > 1000))
+-  {
+-    verbError ("%s: pins (%d) out of range (2-1000)", progName, pins) ;
+-    return FALSE ;
+-  }
+-  
+-  if ((params = extractStr (progName, params, &ipAddress)) == NULL)
+-    return FALSE ;
+-
+-  if (strlen (ipAddress) == 0)
+-  {
+-    verbError ("%s: ipAddress required", progName) ;
+-    return FALSE ;
+-  }
+-
+-  if ((params = extractStr (progName, params, &port)) == NULL)
+-    return FALSE ;
+-
+-  if (strlen (port) == 0)
+-  {
+-    sprintf (pPort, "%d", DEFAULT_SERVER_PORT) ;
+-    port = pPort ;
+-  }
+-
+-  if ((params = extractStr (progName, params, &password)) == NULL)
+-    return FALSE ;
+-
+-  if (strlen (password) == 0)
+-  {
+-    verbError ("%s: password required", progName) ;
+-    return FALSE ;
+-  }
+-
+-  return drcSetupNet (pinBase, pins, ipAddress, port, password) ;
++  //int pins ;
++  //char *ipAddress, *port, *password ;
++  //char pPort [1024] ;
++
++  //if ((params = extractInt (progName, params, &pins)) == NULL)
++  //  return FALSE ;
++
++  //if ((pins < 1) || (pins > 1000))
++  //{
++  //  verbError ("%s: pins (%d) out of range (2-1000)", progName, pins) ;
++  //  return FALSE ;
++  //}
++  //
++  //if ((params = extractStr (progName, params, &ipAddress)) == NULL)
++  //  return FALSE ;
++
++  //if (strlen (ipAddress) == 0)
++  //{
++  //  verbError ("%s: ipAddress required", progName) ;
++  //  return FALSE ;
++  //}
++
++  //if ((params = extractStr (progName, params, &port)) == NULL)
++  //  return FALSE ;
++
++  //if (strlen (port) == 0)
++  //{
++  //  sprintf (pPort, "%d", DEFAULT_SERVER_PORT) ;
++  //  port = pPort ;
++  //}
++
++  //if ((params = extractStr (progName, params, &password)) == NULL)
++  //  return FALSE ;
++
++  //if (strlen (password) == 0)
++  //{
++  //  verbError ("%s: password required", progName) ;
++  //  return FALSE ;
++  //}
++
++  //return drcSetupNet (pinBase, pins, ipAddress, port, password) ;
++  return 0;
+ }
+ 
+ 
+-- 
+1.9.1
+
