@@ -1,17 +1,21 @@
 package com.example.uartinterface.controls
 
 import android.os.Handler
+import com.example.uartinterface.utilities.RootCmd
 import java.nio.charset.StandardCharsets
 
 @Suppress("DEPRECATION")
 class SerialPortController {
 
     private var handler: Handler? = null
-    private var fd = 0
+    var fd = 0
+    var delayMillis: Long = 10
 
     companion object{
         const val BAUD: Int = 115200
         const val SERIAL_PORT: String = "/dev/ttyS0"        // change the value with the serial port used
+
+        const val TERMINATOR_CHAR: Char = '\u0079'
 
         private var instance: SerialPortController? = null
 
@@ -23,43 +27,36 @@ class SerialPortController {
         }
     }
 
-    fun startConnection(uartMessagesCallback: (String) -> Unit): Boolean {
+    fun startConnection(uartMessagesCallback: (String, Int) -> Unit):Boolean {
+        RootCmd.execRootCmdSilent("chmod 666 $SERIAL_PORT")
         fd = WpiControl.serialOpen(SERIAL_PORT, BAUD)
         if (fd > 0) {
-            handler = Handler()
-            handler!!.postDelayed(object : Runnable {
-                override fun run() {
-                    var mess = ""
-                    if(WpiControl.serialDataAvail(fd) > 0) {
-                        var found = false
-                        while (!found) {
-                            val outputSize: Int = WpiControl.serialDataAvail(fd)
-                            if (outputSize > 0) {
-                                val outputByte = ByteArray(outputSize)
-                                var char: Int = -1
-                                var index: Int = -1
-                                repeat(outputSize) {
-                                    char = WpiControl.serialGetchar(fd)
-                                    if (char == '\u0000'.code || char == '\u0079'.code) return@repeat
-                                    outputByte[it] = char.toByte()
-                                    index = it
-                                }
-                                val str = String(outputByte.copyOf(index + 1), StandardCharsets.UTF_8)
-                                mess += str
-                                if (char == '\u0079'.code) found=true
-                            }
-                        }
-                        uartMessagesCallback(mess + " " + mess.length)
-                    }
-                    handler!!.postDelayed(this, 10)
-                }
-            }, 10)      //10
+           handler = Handler()
+           handler!!.postDelayed(object : Runnable {
+               override fun run() {
+                   val size: Int = WpiControl.serialDataAvail(fd)
+                   if (size > 0) {
+                       val b = ByteArray(size)
+                       var i = 0
+                       while (i < size) {
+                           val `val`: Int = WpiControl.serialGetchar(fd)
+                           b[i] = `val`.toByte()
+                           if (`val` == '\u0000'.code) break
+                           i++
+                       }
+                       val str = String(b, StandardCharsets.UTF_8)
+                       uartMessagesCallback(str, size)
+                   }
+                   handler!!.postDelayed(this, delayMillis)
+               }
+           }, delayMillis)      //10
             return true
         } else { return false }
     }
 
     fun stopConnection() {
         if (fd >= 0) {
+            WpiControl.serialFlush(fd)
             WpiControl.serialClose(fd)
         }
         fd = -1

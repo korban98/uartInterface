@@ -10,13 +10,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
+import com.example.uartinterface.composable.CLOSE
+import com.example.uartinterface.composable.OPEN
 import com.example.uartinterface.composable.SerialPort_Composable
+import com.example.uartinterface.composable.TEST
 import com.example.uartinterface.controls.SerialPortController
 import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 var i: Int = 0
@@ -27,16 +26,16 @@ var i: Int = 0
 @ExperimentalMaterial3Api
 class SerialPort: AppCompatActivity() {
 
-    companion object {
-        const val OPEN: Int = 1
-        const val CLOSE: Int = 0
-    }
-
     private val serialPortController: SerialPortController = SerialPortController.getInstance()
 
     private var isConnected by mutableStateOf(false)
     private var uartMessages by mutableStateOf(mutableListOf<String>())
+    private var len by mutableStateOf(0)
+    private var errors by mutableStateOf(0)
     private var stopLoop by mutableStateOf(false)       //TODO: remove this
+    var delaymil: Long = 10
+
+    var expectedValue = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,24 +44,31 @@ class SerialPort: AppCompatActivity() {
             SerialPort_Composable(
                 messages = uartMessages,
                 Connected = isConnected,
+                len = len,
+                err = errors,
                 onConnClickListener = { buttonId ->
                     when (buttonId) {
                         OPEN -> {
-                            isConnected = serialPortController.startConnection { newMessage ->
-                                    uartMessages = uartMessages.toMutableList().apply { add(newMessage) }
+                            isConnected = serialPortController.startConnection { newMessage, size ->
+                                var str = processReceivedMessage(newMessage)
+                                uartMessages = uartMessages.toMutableList().apply { add(str + " ${newMessage.length}") }
+                                // uartMessages = uartMessages.toMutableList().apply { add(newMessage+" ${newMessage.length}") }
+                                len += newMessage.length
+                                //TODO: remove this
+                                /*        stopLoop = false
+                                if(uartMessages.toMutableList().size == 1){
+                                    GlobalScope.launch(Dispatchers.IO) {
+                                        for (i in 0 until 1500) {
+                                            if (stopLoop) break
+                                            val inputMsg: String = generateRandomJson()
+                                            serialPortController.sendMessage(inputMsg+inputMsg+SerialPortController.TERMINATOR_CHAR)
+                                            delay(100)
+                                        }
+                                    }
+                                }*/
                             }
                             if(isConnected) {
                                 showToast("Open Success")
-                                //TODO: remove this
-                                stopLoop = false
-                                GlobalScope.launch(Dispatchers.IO) {
-                                    for (i in 0 until 1500) {
-                                        if (stopLoop) break
-                                        val inputMsg: String = generateRandomJson()
-                                        serialPortController.sendMessage(inputMsg+'\u0079')
-                                        delay(100)
-                                    }
-                                }
                             } else {
                                 showToast("Open Fail")
                             }
@@ -72,14 +78,40 @@ class SerialPort: AppCompatActivity() {
                             uartMessages = mutableListOf()
                             isConnected = false
                             stopLoop = true
+                            len = 0
+                            errors = 0
                         }
+                        TEST -> {}
                     }
                 },
                 onSendClicked = { inputMsg ->
+                    //serialPortController.sendMessage(inputMsg+SerialPortController.TERMINATOR_CHAR)
                     serialPortController.sendMessage(inputMsg)
+                    len = 0
+                },
+                onDelayChanged = { delay ->
+                    serialPortController.delayMillis = delay.toLong()
+                  //  delaymil = delay.toLong()
                 }
             )
         }
+    }
+
+    private fun processReceivedMessage(receivedMessage: String): String {
+        var str = receivedMessage
+        var strPosition = 0
+        for(i in receivedMessage.indices) {
+            val receivedValue = receivedMessage[i].toString().toIntOrNull()
+            if (receivedValue != null && receivedValue == expectedValue) {
+                expectedValue = (expectedValue + 1) % 10
+            } else {
+                errors++
+                str = str.substring(0, strPosition) + "*---*" + str.substring(strPosition+1)
+                strPosition += 5
+            }
+            strPosition++
+        }
+        return str
     }
 
     private fun showToast(msg: String) {
